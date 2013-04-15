@@ -25,12 +25,13 @@ void MpuRead()
       // Wait for correct available data length
       //  Should be a VERY short wait
       while (MpuFifoCount < MpuPacketSize)
+      {
         MpuFifoCount = mpu.getFIFOCount();
-
+      }
       // Read a packet from FIFO
       mpu.getFIFOBytes(MpuFifoBuffer, MpuPacketSize);
-
-      // Track FIFO count here in case there is > 1 packet available
+      
+        // Track FIFO count here in case there is > 1 packet available
       // (this lets us immediately read more without waiting for an interrupt)
       MpuFifoCount -= MpuPacketSize;
 
@@ -169,36 +170,37 @@ void ButtonDebounce(int &ButtonState, int &ButtonValue, unsigned long &ButtonTim
   }
 }
 
-void LedSet(int &LedState, int &LedBlink, int LedPin, unsigned long &LedInterval, unsigned long &LedTimeStart, unsigned long &TimeCurrent)
+void OutputSet(int &OutputState, int &OutputOn, int OutputPin, unsigned long &OutputInterval, unsigned long &OutputTimeStart, unsigned long &TimeCurrent)
 {
-  switch (LedState)
+  switch (OutputState)
   {
   case 0:
-    digitalWrite(LedPin, LOW);
+    digitalWrite(OutputPin, LOW);
     break;
 
   case 1:
-    if (TimeCurrent-LedTimeStart > LedInterval)
+    if (TimeCurrent-OutputTimeStart > OutputInterval)
     {
-      if (LedBlink == 1)
+      if (OutputOn == true)
       {
-        LedBlink = 0;
-        digitalWrite(LedPin, LOW);
+        digitalWrite(OutputPin, LOW);
+        OutputOn = false;
       }
       else
       {
-        LedBlink = 1;
-        digitalWrite(LedPin, HIGH);
+        digitalWrite(OutputPin, HIGH);
+        OutputOn = true;
       }
 
-      LedTimeStart = TimeCurrent;
+      OutputTimeStart = TimeCurrent;
     }
     break;
 
   case 2:
-    digitalWrite(LedPin, HIGH);
+    digitalWrite(OutputPin, HIGH);
   }
 }
+
 
 
 

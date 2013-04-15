@@ -4,9 +4,6 @@ boolean SdFatInitialize()
   boolean IsOk;
   IsOk = true;
 
-#if (CODE_Debug > 0)
-  Serial.println("SD FAT");
-#endif
   // Initialize the SD card at SPI_HALF_SPEED to avoid bus errors with breadboards.
   //  Use SPI_FULL_SPEED for better performance.
   IsOk = SdFatLogSystem.begin(SS_PIN, SPI_HALF_SPEED);
@@ -26,10 +23,10 @@ boolean SdFatInitialize()
     {
       SizeMb = 0.000512 * Size + 0.5;  
 
-#if (CODE_Debug == 2)
-      Serial.print("   Card Size = ");
+#if (CODE_Debug > 0)
+      Serial.print("  SdFat: Card Size = ");
       Serial.print(SizeMb);
-      Serial.println(" MB");
+      Serial.println("MB");
 #endif
     }
   }
@@ -37,13 +34,13 @@ boolean SdFatInitialize()
 #if (CODE_Debug > 0)
   if (IsOk)
   {
-    Serial.println(" Init OK");
+    Serial.println("  SdFat: Initialized OK");
   }
   else
   {
     SdFatLogSystem.initErrorHalt();
 
-    Serial.println(" Init Failed!!!");
+    Serial.println("  SdFat: Init Failed!!!");
   }
 #endif
 
@@ -101,6 +98,7 @@ boolean SdFatOpenWrite()
 
 #if (CODE_Debug == 1)
     sText = "";
+    sText += "SdFat: ";
     sText += aFileLogName;
     sText += " Open for Write";
     Serial.println(sText);

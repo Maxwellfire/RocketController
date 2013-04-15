@@ -32,7 +32,6 @@ void MpuDmpDataReadyCallback()
   MpuInterrupt = true;
 }
 
-int StateArmed = STATE_ArmedOneStageLaunchAuto;
 int StateMaster = STATE_Initialize;
 int StateMasterOld = -1;
 
@@ -62,19 +61,35 @@ unsigned long ButtonTimeStart = 0;
 byte SwitchRotary = 0;
 
 // LED and Buzzer
-int LedGreenState = 0;
-int LedGreenBlink = 0;
-unsigned long LedGreenTimeStart = 0;
-unsigned long LedGreenInterval = 1000;
+int LedTeensyState = 0;
+int LedTeensyBlink = 0;
+unsigned long LedTeensyTimeStart = 0;
+unsigned long LedTeensyInterval = DELAY_Flash_Slow;
 
-int LedRedState = 0;
-int LedRedBlink = 0;
-unsigned long LedRedTimeStart = 0;
-unsigned long LedRedInterval = 1000;
+int LedFlightState = 0;
+int LedFlightBlink = 0;
+unsigned long LedFlightTimeStart = 0;
+unsigned long LedFlightInterval = DELAY_Flash_Slow;
+
+int LedStageState = 0;
+int LedStageBlink = 0;
+unsigned long LedStageTimeStart = 0;
+unsigned long LedStageInterval = DELAY_Flash_Slow;
+
+int LedMotorState = 0;
+int LedMotorBlink = 0;
+unsigned long LedMotorTimeStart = 0;
+unsigned long LedMotorInterval = DELAY_Flash_Slow;
+
+int BuzzerState = 0;
+int BuzzerBlink = 0;
+unsigned long BuzzerTimeStart = 0;
+unsigned long BuzzerInterval = DELAY_Flash_Slow;
 
 int LogState = 0;
 
 unsigned long TimeCurrent = 0;
+unsigned long TimeLastStateTransition = 0;
 
 // Pressure
 double Temperature = 0.0;  // C
@@ -105,18 +120,17 @@ void setup()
   Serial.begin(115200);
 
   // Initialize MPU6050
-  Serial.println(F("Initializing MPU6050 ..."));
+  Serial.println(F("Initializing MPU6050..."));
   mpu.initialize();
   IsOkMaster = mpu.testConnection();
 
   if (IsOkMaster)
   {
     uint8_t MpuDevStatus;      // return status after each device operation (0 = success, !0 = error)
-
     Serial.println(F("   MPU6050: connection successful"));
 
     // Load and configure the DMP
-    Serial.println(F("   MPU6050: Initializing DMP ..."));
+    Serial.println(F("   MPU6050: Initializing DMP..."));
     MpuDevStatus = mpu.dmpInitialize();
     if (MpuDevStatus == 0) 
     {
@@ -162,77 +176,68 @@ void setup()
   pinMode(PIN_D_SwitchRot4, INPUT);
 
   //Leds as 
-  pinMode(PIN_D_LedGreen, OUTPUT);
-  digitalWrite(PIN_D_LedGreen, HIGH);
-  pinMode(PIN_D_LedRedBuzzer, OUTPUT);
-  digitalWrite(PIN_D_LedRedBuzzer, HIGH);
+  pinMode(PIN_D_LedTeensy, OUTPUT);
+  digitalWrite(PIN_D_LedTeensy, LOW);
+  pinMode(PIN_D_LedFlight, OUTPUT);
+  digitalWrite(PIN_D_LedFlight, LOW);
+  pinMode(PIN_D_LedStage, OUTPUT);
+  digitalWrite(PIN_D_LedStage, LOW);
+  pinMode(PIN_D_LedMotor, OUTPUT);
+  digitalWrite(PIN_D_LedMotor, LOW);
+  pinMode(PIN_D_Buzzer, OUTPUT);
+  digitalWrite(PIN_D_Buzzer, LOW);
 
   // SPI SS pin
   pinMode(10, OUTPUT);
 
   //Servo Setup
-  Servo1.attach(PIN_D_Servo1,600,2400);
-  Servo2.attach(PIN_D_Servo2,600,2400);
+  Servo1.attach(PIN_D_Servo1);
+  Servo2.attach(PIN_D_Servo2);
 
   Servo1.write(SERVO_1_Position_Start);
   Servo2.write(SERVO_2_Position_Start);
 
-
-#if (CODE_Debug > 0)
-  Serial.println();
-  Serial.println();
-  Serial.println("||||||||||");
   Serial.println("");
-#endif
-
-#if (CODE_Debug > 0)
-  Serial.println("***");
-  Serial.println("Initializing");
-  Serial.println("");
-#endif
-
-#if (CODE_Debug > 0)
-  Serial.println("");
-#endif
+  Serial.println("Initializing SdFat...");
 
   IsOkMaster |= SdFatInitialize();
   delay(1000);
 
-  ButtonValue = analogRead(PIN_A_Button1) > 500;
-  ButtonState = 0;
+  ButtonValue = digitalRead(PIN_D_Button1);
   ButtonTimeStart = millis();
 
-  LedGreenState = 0;
-  LedGreenBlink = 0;
-  LedGreenTimeStart = millis();
+  LedTeensyTimeStart = millis();
+  LedFlightTimeStart = millis();
+  LedStageTimeStart = millis();
+  LedMotorTimeStart = millis();
+  BuzzerTimeStart = millis();
 
-  LedRedState = 0;
-  LedRedBlink = 0;
-  LedRedTimeStart = millis();
+  Serial.println("");
+  Serial.println("INITIALIZING COMPLETE");
+  Serial.println("_________________________");
+  Serial.println("");
 
-#if (CODE_Debug > 0)
-  Serial.println("");
-  Serial.println("Initializing Complete");
-  Serial.println("***");
-  Serial.println("");
-#endif
+  // Time
+  TimeCurrent = millis();   
+  TimeLastStateTransition = TimeCurrent;   
 }
 
 void loop()
 {
   // Read sensors and buttons
-  TimeCurrent = millis();   
+  TimeCurrent = millis();
+#if (CODE_Test <= 0)
+  TimeLastStateTransition = millis();
+#endif
 
   // Button
-  ButtonValue = analogRead(PIN_A_Button1) > 500;      // read input value and store it in val
+  ButtonValue = digitalRead(PIN_D_Button1);      // read input value and store it in val
   ButtonDebounce(ButtonState, ButtonValue, ButtonTimeStart, TimeCurrent);
 
   // Rotary Switch
   SwitchRotary = ReadRotary();
 
   // Sensor Values
-  MpuRead();
-
   switch (StateMaster)
   {
   case STATE_Initialize:
@@ -246,32 +251,29 @@ void loop()
     break;
 
   case STATE_PreFlight:
-  case STATE_ArmedOneStageLaunchManual:
-  case STATE_ArmedOneStageLaunchAuto:
-  case STATE_ArmedTwoStageLaunchManual:
-  case STATE_IgnitionOne:
-  case STATE_StageOneBurn:
-  case STATE_StageOneCoast:
-  case STATE_IgnitionTwo:
-  case STATE_StageTwoBurn:
-  case STATE_StageTwoCoast:
+  case STATE_ArmedStageTwoLaunchAuto:
+  case STATE_FlightOneIgnitionWait:
+  case STATE_FlightOneBurn:
+  case STATE_FlightOneCoast:
+  case STATE_FlightTwoIgnitionWaitFromArmed:
+  case STATE_FlightTwoIgnitionWaitFromOne:
+  case STATE_FlightTwoBurn:
+  case STATE_FlightTwoCoast:
   case STATE_Recovery:
   case STATE_Logger:
-    //Altitude = BmpPressure.CalculateAltitude(Pressure);
-
+    //MpuRead();
     if (Altitude > AltitudePeak)
       AltitudePeak = Altitude;
     break;
   }
 
-  // Check for StateMaster change
   // Button
   switch(StateMaster)
   {
-  case STATE_StageOneCoast:
-  case STATE_StageOneBurn:
-  case STATE_StageTwoCoast:
-  case STATE_StageTwoBurn:
+  case STATE_FlightOneCoast:
+  case STATE_FlightOneBurn:
+  case STATE_FlightTwoCoast:
+  case STATE_FlightTwoBurn:
   case STATE_Recovery:
   case STATE_Logger:
     if (ButtonState == 2)
@@ -281,7 +283,9 @@ void loop()
     break;
   }
 
-  // Acceleration and Time
+  // Main Switch
+  //  State Transitions
+  //  Servo
   switch (StateMaster)
   {
   case STATE_Initialize:
@@ -296,11 +300,12 @@ void loop()
         }
         else
         {
+          IsOkMaster = false;
           StateMaster = STATE_Error;
         }
         break;
 
-      case 12:
+      case 13:
         StateMaster = STATE_Charge;
         break;
 
@@ -320,88 +325,84 @@ void loop()
     {
       switch (SwitchRotary)
       {
-      case 0:
-        StateMaster = STATE_IgnitionTwo;
+      case 0:    // Manually Lanch Stage Two (One Stage Rocket)
+        TimeArmedStart = TimeCurrent;
+        StateMaster = STATE_FlightTwoIgnitionWaitFromArmed;
         break;
 
-      case 1:
-        StateArmed = STATE_ArmedOneStageLaunchManual;
-        StateMaster = STATE_ArmedOneStageLaunchManual;
+      case 1:    // Automatically Lanch Stage Two (One Stage Rocket)
+        TimeArmedStart = TimeCurrent;
+        StateMaster = STATE_ArmedStageTwoLaunchAuto;
         break;
 
-      case 2:
-        StateArmed = STATE_ArmedOneStageLaunchAuto;
-        StateMaster = STATE_ArmedOneStageLaunchAuto;
+      case 2:    // Manually Lanch Stage One (Two Stage Rocket)
+        TimeArmedStart = TimeCurrent;
+        StateMaster = STATE_FlightOneIgnitionWait;
         break;
 
-      case 3:
-        StateArmed = STATE_ArmedTwoStageLaunchManual;
-        StateMaster = STATE_ArmedTwoStageLaunchManual;
-        break;
-
-      case 14:
+      case 14:  // Log Sensors
+        TimeArmedStart = TimeCurrent;
         StateMaster = STATE_Logger;
         break;
       }
     }
     break;
 
-  case STATE_ArmedOneStageLaunchManual:
-    StateMaster = STATE_IgnitionTwo;
-    break;
-
-  case STATE_ArmedOneStageLaunchAuto:
+  case STATE_ArmedStageTwoLaunchAuto:
     if ((TimeCurrent - TimeArmedStart) > DELAY_Armed_To_LaunchAuto)
     {
-      StateMaster = STATE_IgnitionTwo;
+      StateMaster = STATE_FlightTwoIgnitionWaitFromArmed;
 
       Servo1.write(SERVO_1_Position_End);
     }
     break;
 
-  case STATE_ArmedTwoStageLaunchManual:
-    StateMaster = STATE_IgnitionOne;
-    break;
-
-  case STATE_IgnitionOne:
-    if (AccelerationWorld.z < ACCELERATION_Ignition)
+  case STATE_FlightOneIgnitionWait:
+    if ((AccelerationWorld.z < ACCELERATION_Ignition) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
-      StateMaster = STATE_StageOneBurn;
+      StateMaster = STATE_FlightOneBurn;
     }
     break;
 
-  case STATE_StageOneBurn:
-    if (AccelerationWorld.z > 0.0)
+  case STATE_FlightOneBurn:
+    if ((AccelerationWorld.z > 0.0) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
-      StateMaster = STATE_StageOneCoast;
+      StateMaster = STATE_FlightOneCoast;
     }
     break;
 
-  case STATE_StageOneCoast:
-    if (TimeCurrent - TimeStageOneCoastStart >= DELAY_StageOneCoast_To_StageTwoIgnition)
+  case STATE_FlightOneCoast:
+    if ((TimeCurrent - TimeStageOneCoastStart >= DELAY_StageOneCoast_To_StageTwoIgnition) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
-      StateMaster = STATE_IgnitionTwo;
+      StateMaster = STATE_FlightTwoIgnitionWaitFromOne;
 
       Servo1.write(SERVO_1_Position_End);
     }
     break;
 
-  case STATE_IgnitionTwo:
-    if (AccelerationWorld.z < ACCELERATION_Ignition)
+  case STATE_FlightTwoIgnitionWaitFromArmed:
+  case STATE_FlightTwoIgnitionWaitFromOne:
+    if ((AccelerationWorld.z < ACCELERATION_Ignition) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
-      StateMaster = STATE_StageTwoBurn;
+      StateMaster = STATE_FlightTwoBurn;
     }
     break;
 
-  case STATE_StageTwoBurn:
-    if (AccelerationWorld.z > 0.0)
+  case STATE_FlightTwoBurn:
+    if ((AccelerationWorld.z > 0.0) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
-      StateMaster = STATE_StageTwoCoast;
+      StateMaster = STATE_FlightTwoCoast;
     }
     break;
 
-  case STATE_StageTwoCoast:
-    if (TimeCurrent - TimeStageTwoCoastStart >= DELAY_Coast_To_Parachute)
+  case STATE_FlightTwoCoast:
+    if ((TimeCurrent - TimeStageTwoCoastStart >= DELAY_Coast_To_Parachute) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
       StateMaster = STATE_Recovery;
 
@@ -411,7 +412,8 @@ void loop()
     break;
 
   case STATE_Recovery:
-    if (AccelerationWorld.z < 0.1)
+    if ((AccelerationWorld.z < 0.1 && AccelerationWorld.z > -0.1) ||
+      (TimeCurrent-TimeLastStateTransition > CODE_TestTime))
     {
       if (TimeNotMoving == 0)
         TimeNotMoving = TimeCurrent;
@@ -452,8 +454,7 @@ void loop()
   {
   case STATE_Initialize:
   case STATE_PreFlight:
-  case STATE_StageOneBurn:
-  case STATE_StageTwoBurn:
+  case STATE_Recovery:
   case STATE_Final:
   case STATE_Charge:
   case STATE_Readout:
@@ -461,159 +462,196 @@ void loop()
   case STATE_Error:
     break;
 
-  case STATE_ArmedOneStageLaunchManual:
-  case STATE_ArmedOneStageLaunchAuto:
-  case STATE_ArmedTwoStageLaunchManual:
-  case STATE_IgnitionOne:
-  case STATE_StageOneCoast:
-  case STATE_IgnitionTwo:
+  case STATE_ArmedStageTwoLaunchAuto:
+  case STATE_FlightOneIgnitionWait:
+  case STATE_FlightOneBurn:
+  case STATE_FlightOneCoast:
+  case STATE_FlightTwoIgnitionWaitFromArmed:
+  case STATE_FlightTwoIgnitionWaitFromOne:
+  case STATE_FlightTwoBurn:
+  case STATE_FlightTwoCoast:
     if ((AltitudePeak - Altitude) > DEADBAND_Altitude_Flight)
     {
       StateMaster = STATE_Recovery;
 
       Servo2.write(SERVO_2_Position_End);
+
       ParachuteReleaseHow = 2;
     }
-    break;
-
-  case STATE_StageTwoCoast:
-    if ((AltitudePeak - Altitude) > DEADBAND_Altitude_Final)
-    {
-      StateMaster = STATE_Recovery;
-
-      Servo2.write(SERVO_2_Position_End);
-      ParachuteReleaseHow = 2;
-    }
-    break;
-
-  case STATE_Recovery:
     break;
   }
 
-  // Process StateMaster
+  // First time in State
   if (StateMaster != StateMasterOld)
   {
-    // First time in State
-
 #if (CODE_Debug > 0)
     Serial.print("*** State = ");
     Serial.println(StateMaster);
     Serial.println();
 #endif
 
+   TimeLastStateTransition = TimeCurrent;
+
     switch (StateMaster)
     {
-    case STATE_Initialize:
-      LedGreenState = 2;
-      LedRedState = 2;
+    case STATE_Initialize:  
+      LedTeensyState = 0;
+      LedTeensyInterval = 0;
+      LedFlightState = 0;
+      LedFlightInterval = 0;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 0;
       break;
 
     case STATE_PreFlight:
-      LedGreenState = 1   ;
-      LedGreenInterval = 1000;
-      LedRedState = 0;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 1;
+      LedFlightInterval = DELAY_Flash_Fast;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 0;
       break;
 
-    case STATE_ArmedOneStageLaunchManual:
-      TimeArmedStart = TimeCurrent;
-
-      LedGreenState = 2;
-      LedRedState = 0;
-
-      LogState = 1;
-      break;
-
-    case STATE_ArmedOneStageLaunchAuto:
-      TimeArmedStart = TimeCurrent;
-
-      LedGreenState = 2;
-      LedRedState = 0;
+    case STATE_ArmedStageTwoLaunchAuto:
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 1;
+      BuzzerInterval = DELAY_Flash_Fast;
 
       LogState = 1;
       break;
 
-    case STATE_ArmedTwoStageLaunchManual:
-      TimeArmedStart = TimeCurrent;
-
-      LedGreenState = 2;
-      LedRedState = 0;
-
-      LogState = 1;
-      break;
-
-    case STATE_IgnitionOne:
+    case STATE_FlightOneIgnitionWait:
       TimeFlightStart = TimeCurrent;
 
-      LedGreenState = 2;
-      LedRedState = 1;
-      LedRedInterval = 1000;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Fast;
+      LedMotorState = 1;
+      LedMotorInterval = DELAY_Flash_Fast;
+      BuzzerState = 1;
+      BuzzerInterval = DELAY_Flash_Fast;
 
       LogState = 1;
       break;
 
-    case  STATE_StageOneBurn:
+    case  STATE_FlightOneBurn:
       TimeStageOneBurnStart = TimeCurrent;
 
-      LedGreenState = 1;
-      LedGreenInterval = 1000;
-      LedRedState = 1;
-      LedRedInterval = 1000;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Fast;
+      LedMotorState = 2;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
 
-    case STATE_StageOneCoast:
+    case STATE_FlightOneCoast:
       TimeStageOneCoastStart = TimeCurrent;
 
-      LedGreenState = 1;
-      LedGreenInterval = 250;
-      LedRedState = 1;
-      LedRedInterval = 1000;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Fast;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
 
-    case STATE_IgnitionTwo:
-      switch (StateArmed)
-      {
-      case STATE_ArmedOneStageLaunchManual:
-      case STATE_ArmedOneStageLaunchAuto:
-        TimeFlightStart = TimeCurrent;
-        break;
+    case STATE_FlightTwoIgnitionWaitFromArmed:
+      TimeFlightStart = TimeCurrent;
 
-      case STATE_ArmedTwoStageLaunchManual:
-        break;
-      }
-
-      LedGreenState = 2;
-      LedRedState = 1;
-      LedRedInterval = 250;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 2;
+      LedStageInterval = 0;
+      LedMotorState = 1;
+      LedMotorInterval = DELAY_Flash_Fast;
+      BuzzerState = 1;
+      BuzzerInterval = DELAY_Flash_Fast;
 
       LogState = 1;
       break;
 
-    case STATE_StageTwoBurn:
+    case STATE_FlightTwoIgnitionWaitFromOne:
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 2;
+      LedStageInterval = 0;
+      LedMotorState = 1;
+      LedMotorInterval = DELAY_Flash_Fast;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
+
+      LogState = 1;
+      break;
+
+    case STATE_FlightTwoBurn:
       TimeStageTwoBurnStart = TimeCurrent;
 
-      LedGreenState = 1;
-      LedGreenInterval = 1000;
-      LedRedState = 1;
-      LedRedInterval = 250;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 2;
+      LedStageInterval = 0;
+      LedMotorState = 2;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
 
-    case STATE_StageTwoCoast:
+    case STATE_FlightTwoCoast:
       TimeStageTwoCoastStart = TimeCurrent;
 
-      LedGreenState = 1;
-      LedGreenInterval = 250;
-      LedRedState = 1;
-      LedRedInterval = 250;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 2;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
@@ -621,8 +659,16 @@ void loop()
     case STATE_Recovery:
       TimeParachuteRelease = TimeCurrent;
 
-      LedGreenState = 0;
-      LedRedState = 2;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 2;
+      LedFlightInterval = 0;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Slow;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
@@ -666,9 +712,16 @@ void loop()
         SdFatLogFile.close();
       }
 
-      LedGreenState = 1;
-      LedGreenInterval = 100;
-      LedRedState = 0;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 0;
+      LedFlightInterval = 0;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Slow;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 1;
+      BuzzerInterval = DELAY_Flash_Slow;
 
       LogState = 0;
       break;
@@ -677,15 +730,32 @@ void loop()
       Servo1.detach();
       Servo2.detach();
 
-      LedGreenState = 0;
-      LedRedState = 0;
+      LedTeensyState = 1;
+      LedTeensyInterval = DELAY_Flash_Slow;
+      LedFlightState = 0;
+      LedFlightInterval = 0;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 0;
       break;
 
     case STATE_Readout:
-      LedGreenState = 2;
-      LedRedState = 2;
+
+      LedTeensyState = 1;
+      LedTeensyInterval = DELAY_Flash_Fast;
+      LedFlightState = 0;
+      LedFlightInterval = 0;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 0;
 
@@ -705,19 +775,31 @@ void loop()
       break;
 
     case STATE_Logger:
-      LedGreenState = 1;
-      LedGreenInterval = 2000;
-      LedRedState = 1;
-      LedRedInterval = 2000;
+      LedTeensyState = 2;
+      LedTeensyInterval = 0;
+      LedFlightState = 0;
+      LedFlightInterval = 0;
+      LedStageState = 0;
+      LedStageInterval = 0;
+      LedMotorState = 0;
+      LedMotorInterval = 0;
+      BuzzerState = 0;
+      BuzzerInterval = 0;
 
       LogState = 1;
       break;
 
     case STATE_Error:
-      LedGreenState = 1;
-      LedGreenInterval = 100;
-      LedRedState = 1;
-      LedRedInterval = 100;
+      LedTeensyState = 1;
+      LedTeensyInterval = DELAY_Flash_Slow;
+      LedFlightState = 1;
+      LedFlightInterval = DELAY_Flash_Slow;
+      LedStageState = 1;
+      LedStageInterval = DELAY_Flash_Slow;
+      LedMotorState = 1;
+      LedMotorInterval = DELAY_Flash_Slow;
+      BuzzerState = 2;
+      BuzzerInterval = 0;
 
       LogState = 0;  
 
@@ -739,14 +821,12 @@ void loop()
     {
     case STATE_Initialize:
     case STATE_PreFlight:
-    case STATE_ArmedOneStageLaunchManual:
-    case STATE_ArmedOneStageLaunchAuto:
-    case STATE_ArmedTwoStageLaunchManual:
-    case STATE_IgnitionOne:
-    case STATE_StageOneCoast:
-    case STATE_StageOneBurn:
-    case STATE_StageTwoCoast:
-    case STATE_StageTwoBurn:
+    case STATE_ArmedStageTwoLaunchAuto:
+    case STATE_FlightOneIgnitionWait:
+    case STATE_FlightOneCoast:
+    case STATE_FlightOneBurn:
+    case STATE_FlightTwoCoast:
+    case STATE_FlightTwoBurn:
     case STATE_Recovery:
     case STATE_Logger:
     case STATE_Final:
@@ -775,23 +855,28 @@ void loop()
   }
 
   // Output Light and Buzzer
-  LedSet(LedGreenState, LedGreenBlink, PIN_D_LedGreen, LedGreenInterval, LedGreenTimeStart, TimeCurrent);
-  LedSet(LedRedState, LedRedBlink, PIN_D_LedRedBuzzer, LedRedInterval, LedRedTimeStart, TimeCurrent);
+
+  OutputSet(LedTeensyState, LedTeensyBlink, PIN_D_LedTeensy, LedTeensyInterval, LedTeensyTimeStart, TimeCurrent);
+  OutputSet(LedFlightState, LedFlightBlink, PIN_D_LedFlight, LedFlightInterval, LedFlightTimeStart, TimeCurrent);
+  OutputSet(LedStageState, LedStageBlink, PIN_D_LedStage, LedStageInterval, LedStageTimeStart, TimeCurrent);
+  OutputSet(LedMotorState, LedMotorBlink, PIN_D_LedMotor, LedMotorInterval, LedMotorTimeStart, TimeCurrent);
+  OutputSet(BuzzerState, BuzzerBlink, PIN_D_Buzzer, BuzzerInterval, BuzzerTimeStart, TimeCurrent);
 
   // Write to storage
   if (LogState == 1)
-  {
+  { 
+
 #if (CODE_Debug > 0)
     Serial.print("T=");
     Serial.print(TimeCurrent-TimeArmedStart);
     Serial.print("\tS=");
     Serial.print(StateMaster);
     Serial.print("\tAx=");
-    Serial.print(AccelerationWorld.x, 2);
+    Serial.print(Acceleration.x, 2);
     Serial.print("\tAy=");
-    Serial.print(AccelerationWorld.y, 2);
+    Serial.print(Acceleration.y, 2);
     Serial.print("\tAz=");
-    Serial.print(AccelerationWorld.z, 2);
+    Serial.print(Acceleration.z, 2);
     Serial.print("\tYaw=");
     Serial.print(Ypr[0], 2);
     Serial.print("\tPitch=");
@@ -804,8 +889,12 @@ void loop()
     Serial.print(Pressure);
     Serial.print("\tH=");
     Serial.print(Altitude, 2);
+    Serial.print("\t");
+    Serial.print(SwitchRotary);
     Serial.println("");
 
+
+    Serial.println("Test");
 #endif
 
     SdFatLogFile.print(TimeCurrent-TimeArmedStart);
@@ -835,6 +924,16 @@ void loop()
   // Remember latest StateMaster
   StateMasterOld = StateMaster;
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
