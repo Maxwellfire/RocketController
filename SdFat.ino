@@ -24,7 +24,7 @@ boolean SdFatInitialize()
       SizeMb = 0.000512 * Size + 0.5;  
 
 #if (CODE_Debug > 0)
-      Serial.print("  SdFat: Card Size = ");
+      Serial.print("   SdFat: Card Size = ");
       Serial.print(SizeMb);
       Serial.println("MB");
 #endif
@@ -34,13 +34,13 @@ boolean SdFatInitialize()
 #if (CODE_Debug > 0)
   if (IsOk)
   {
-    Serial.println("  SdFat: Initialized OK");
+    Serial.println("   SdFat: Initialized OK");
   }
   else
   {
     SdFatLogSystem.initErrorHalt();
 
-    Serial.println("  SdFat: Init Failed!!!");
+    Serial.println("   SdFat: Init Failed!!!");
   }
 #endif
 

@@ -2,11 +2,13 @@
 #include "Constants.h"
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
+#include "HMC5883L.h"
 #include <Servo.h>
 #include <Wire.h>
 #include <SdFat.h>
 
 MPU6050 mpu;
+HMC5883L mag;
 
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 bool blinkState = false;
@@ -26,6 +28,9 @@ VectorInt16 AccelerationWorld;  // [x, y, z]            world-frame acceleromete
 VectorFloat Gravity;            // [x, y, z]            gravity vector
 float Euler[3];                 // [psi, theta, phi]    Euler angle container
 float Ypr[3];                   // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+
+//Magnetometer variables
+int16_t MagnetometerX, MagnetometerY, MagnetometerZ;
 
 void MpuDmpDataReadyCallback() 
 {
@@ -140,7 +145,7 @@ void setup()
 
       // Enable Arduino interrupt detection
       Serial.println(F("   MPU6050: Enabling interrupt detection (Arduino external interrupt 0)..."));
-      attachInterrupt(0, MpuDmpDataReadyCallback, RISING);
+      attachInterrupt(6, MpuDmpDataReadyCallback, RISING);
       MpuIntStatus = mpu.getIntStatus();
 
       // Get expected DMP packet size for later comparison
@@ -166,6 +171,22 @@ void setup()
     Serial.println(F("   MPU6050: connection failed"));
   }
 
+  if (IsOkMaster)
+  {
+    Serial.println("Initializing HMC5883L...");
+    mag.initialize();
+    
+    if(mag.testConnection() == true)
+    {
+      Serial.println("   HMC5883L: connection successful");
+    }
+    else
+    {
+      IsOkMaster = false;
+      Serial.println("   HMC5883L: connection failed");
+    }
+  }
+  
   // Configure LED for output
   pinMode(LED_PIN, OUTPUT);
 
@@ -196,8 +217,7 @@ void setup()
 
   Servo1.write(SERVO_1_Position_Start);
   Servo2.write(SERVO_2_Position_Start);
-
-  Serial.println("");
+  
   Serial.println("Initializing SdFat...");
 
   IsOkMaster |= SdFatInitialize();
@@ -262,6 +282,8 @@ void loop()
   case STATE_Recovery:
   case STATE_Logger:
     //MpuRead();
+    mag.getHeading(&MagnetometerX, &MagnetometerY, &MagnetometerZ);
+    
     if (Altitude > AltitudePeak)
       AltitudePeak = Altitude;
     break;
@@ -883,6 +905,12 @@ void loop()
     Serial.print(Ypr[1], 2);
     Serial.print("\tRoll=");
     Serial.print(Ypr[2], 2);
+    Serial.print("\tMX=");
+    Serial.print(MagnetometerX, 5);
+    Serial.print("\tMY=");
+    Serial.print(MagnetometerY, 5);
+    Serial.print("\tMZ=");
+    Serial.print(MagnetometerZ, 5);
     Serial.print("\tT=");
     Serial.print(Temperature);
     Serial.print("\tP=");
@@ -912,6 +940,12 @@ void loop()
     SdFatLogFile.print(Ypr[1], 5);
     SdFatLogFile.print("\t");
     SdFatLogFile.print(Ypr[2], 5);
+    SdFatLogFile.print("\t");
+    SdFatLogFile.print(MagnetometerX, 5);
+    SdFatLogFile.print("\t");
+    SdFatLogFile.print(MagnetometerY, 5);
+    SdFatLogFile.print("\t");
+    SdFatLogFile.print(MagnetometerZ, 5);
     SdFatLogFile.print("\t");
     SdFatLogFile.print(Temperature);
     SdFatLogFile.print("\t");
