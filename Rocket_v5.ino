@@ -1,4 +1,3 @@
-
 #include "Constants.h"
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps20.h"
@@ -175,7 +174,7 @@ void setup()
   {
     Serial.println("Initializing HMC5883L...");
     mag.initialize();
-    
+
     if(mag.testConnection() == true)
     {
       Serial.println("   HMC5883L: connection successful");
@@ -186,7 +185,7 @@ void setup()
       Serial.println("   HMC5883L: connection failed");
     }
   }
-  
+
   // Configure LED for output
   pinMode(LED_PIN, OUTPUT);
 
@@ -217,7 +216,7 @@ void setup()
 
   Servo1.write(SERVO_1_Position_Start);
   Servo2.write(SERVO_2_Position_Start);
-  
+
   Serial.println("Initializing SdFat...");
 
   IsOkMaster |= SdFatInitialize();
@@ -283,7 +282,7 @@ void loop()
   case STATE_Logger:
     //MpuRead();
     mag.getHeading(&MagnetometerX, &MagnetometerY, &MagnetometerZ);
-    
+
     if (Altitude > AltitudePeak)
       AltitudePeak = Altitude;
     break;
@@ -512,7 +511,7 @@ void loop()
     Serial.println();
 #endif
 
-   TimeLastStateTransition = TimeCurrent;
+    TimeLastStateTransition = TimeCurrent;
 
     switch (StateMaster)
     {
@@ -958,6 +957,7 @@ void loop()
   // Remember latest StateMaster
   StateMasterOld = StateMaster;
 }
+
 
 
 
